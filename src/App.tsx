@@ -320,8 +320,9 @@ export default function App() {
       <LectureDetailsSheet event={selectedEvent} onClose={() => setSelectedEvent(null)} />
 
       {isRefreshing && (
-        <div className="loading-fab" role="status" aria-live="polite" aria-label="Ielādē grafiku">
+        <div className="loading-fab" role="status" aria-live="polite">
           <span className="loading-fab__spinner" aria-hidden />
+          <span className="loading-fab__text">Atjaunina lekciju sarakstu…</span>
         </div>
       )}
     </div>
