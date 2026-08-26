@@ -1,0 +1,124 @@
+.lecture-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+  min-height: 44px;
+}
+
+.lecture-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.lecture-card.program-g0108 {
+  border-left-color: var(--color-g0108);
+  background: color-mix(in srgb, var(--color-g0108) 8%, var(--surface));
+}
+
+.lecture-card.program-g0405 {
+  border-left-color: var(--color-g0405);
+  background: color-mix(in srgb, var(--color-g0405) 8%, var(--surface));
+}
+
+.lecture-card__badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lecture-card.program-g0108 .lecture-card__badge {
+  color: var(--color-g0108);
+}
+
+.lecture-card.program-g0405 .lecture-card__badge {
+  color: var(--color-g0405);
+}
+
+.lecture-card__title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  min-width: 0;
+  width: 100%;
+}
+
+.lecture-card__time {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.lecture-card__meta {
+  font-size: 0.8rem;
+  color: var(--text-soft);
+  margin-top: 0.15rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lecture-card.is-compact {
+  padding: 7px 8px;
+  gap: 0.15rem;
+  border-radius: 8px;
+  min-height: min-content;
+  height: auto;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  justify-content: flex-start;
+  box-sizing: border-box;
+}
+
+.lecture-card.is-compact .lecture-card__badge {
+  font-size: 10px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.lecture-card.is-compact .lecture-card__title {
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 700;
+  white-space: normal;
+  overflow-wrap: break-word;
+  overflow: visible;
+  display: block;
+}
+
+.lecture-card.is-compact .lecture-card__time,
+.lecture-card.is-compact .lecture-card__meta {
+  font-size: 11px;
+  line-height: 1.3;
+  flex-shrink: 0;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: 100%;
+}

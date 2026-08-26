@@ -1,0 +1,67 @@
+.date-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+
+.date-strip__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-height: 64px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  padding: 0.4rem 0.15rem;
+}
+
+.date-strip__day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.date-strip__wd {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.date-strip__num {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.date-strip__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.date-strip__dot.has-events {
+  background: var(--accent);
+}
+
+.date-strip__day.is-today .date-strip__num {
+  color: var(--accent);
+}
+
+.date-strip__day.is-selected {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.date-strip__day.is-selected .date-strip__wd,
+.date-strip__day.is-selected .date-strip__num {
+  color: inherit;
+}
+
+.date-strip__day.is-selected .date-strip__dot.has-events {
+  background: var(--surface);
+}

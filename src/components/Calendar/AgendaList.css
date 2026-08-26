@@ -1,0 +1,17 @@
+.agenda-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+}
+
+.agenda-list__day h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  font-family: var(--font-display);
+}
+
+.agenda-list__events {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}

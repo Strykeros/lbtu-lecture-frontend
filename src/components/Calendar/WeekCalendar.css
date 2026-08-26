@@ -1,0 +1,112 @@
+.week-calendar {
+  display: none;
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (min-width: 900px) {
+  .week-calendar {
+    display: block;
+  }
+}
+
+.week-calendar__title {
+  margin: 0 0 0.75rem;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.week-calendar__scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.week-calendar__grid {
+  display: grid;
+  /* Column mins are set inline from overlap-aware widths */
+  grid-template-columns: 56px repeat(7, minmax(150px, 1fr));
+  width: max(100%, var(--week-grid-min, 1106px));
+  min-width: 1106px;
+  box-sizing: border-box;
+}
+
+.week-calendar__corner,
+.week-calendar__dayhead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0.65rem 0.35rem;
+  text-align: center;
+}
+
+.week-calendar__dayhead {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.week-calendar__dayhead strong {
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.week-calendar__dayhead.is-today strong {
+  color: var(--accent);
+}
+
+.week-calendar__times,
+.week-calendar__col {
+  position: relative;
+  border-left: 1px solid var(--border);
+  min-width: 0;
+}
+
+.week-calendar__hour {
+  position: absolute;
+  left: 0;
+  right: 0;
+  transform: translateY(-0.55em);
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-align: right;
+  padding-right: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-calendar__line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.week-calendar__event {
+  position: absolute;
+  z-index: 1;
+  overflow: visible;
+  box-sizing: border-box;
+  min-width: 130px;
+}
+
+.week-calendar__event .lecture-card {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  min-height: 100%;
+}

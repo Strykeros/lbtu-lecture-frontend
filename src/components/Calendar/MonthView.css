@@ -1,0 +1,75 @@
+.month-view h2 {
+  margin: 0 0 0.85rem;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+}
+
+.month-view__weekdays,
+.month-view__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.month-view__weekdays {
+  margin-bottom: 0.35rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.month-view__cell {
+  aspect-ratio: 1;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+}
+
+.month-view__cell.is-muted {
+  opacity: 0.4;
+}
+
+.month-view__cell.is-today {
+  border-color: var(--accent);
+}
+
+.month-view__cell.is-selected {
+  background: var(--text);
+  color: var(--surface);
+}
+
+.month-view__count {
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-width: 1.1rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+}
+
+.month-view__cell.is-selected .month-view__count {
+  background: color-mix(in srgb, var(--surface) 25%, transparent);
+  color: inherit;
+}
+
+.month-view__hint {
+  margin: 0.85rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.month-view__cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
