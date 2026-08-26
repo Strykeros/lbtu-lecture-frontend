@@ -4,7 +4,7 @@ import {
   loadScheduleResponse,
   parseScheduleQuery,
   scheduleErrorPayload,
-} from '../../server/handlers/scheduleHandler.js';
+} from '../server/handlers/scheduleHandler.js';
 
 export const config = {
   maxDuration: 60,

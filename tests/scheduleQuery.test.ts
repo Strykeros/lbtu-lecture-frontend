@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_SCHEDULE_RANGE_DAYS,
-  ScheduleQueryError,
   parseScheduleQuery,
 } from '../server/handlers/scheduleHandler';
 import { filterEventsByQuery } from '../server/services/lbtu/getSchedule';
@@ -38,8 +37,11 @@ function event(
 }
 
 describe('parseScheduleQuery', () => {
-  it('requires from and to', () => {
-    expect(() => parseScheduleQuery({})).toThrow(ScheduleQueryError);
+  it('defaults to the current week when from/to are omitted', () => {
+    const parsed = parseScheduleQuery({});
+    expect(parsed.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(parsed.to).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(parsed.from <= parsed.to).toBe(true);
   });
 
   it('rejects invalid dates', () => {

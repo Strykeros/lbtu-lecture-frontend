@@ -29,6 +29,42 @@ function daysBetweenInclusive(from: string, to: string): number {
   return Math.floor((b - a) / 86_400_000) + 1;
 }
 
+function todayInRiga(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Riga',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function addDaysIso(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const utc = Date.UTC(y!, m! - 1, d! + days);
+  const dt = new Date(utc);
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+function startOfWeekMonday(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const utc = Date.UTC(y!, m! - 1, d!);
+  const sun0 = new Date(utc).getUTCDay();
+  const mondayOffset = (sun0 + 6) % 7;
+  return addDaysIso(iso, -mondayOffset);
+}
+
+/** Default visible window when clients omit from/to (current week, Europe/Riga). */
+export function defaultScheduleRange(now = todayInRiga()): {
+  from: string;
+  to: string;
+} {
+  const from = startOfWeekMonday(now);
+  return { from, to: addDaysIso(from, 6) };
+}
+
 export interface ParsedScheduleQuery {
   force: boolean;
   from: string;
@@ -42,14 +78,26 @@ export function parseScheduleQuery(
   query: Record<string, string | string[] | undefined>,
 ): ParsedScheduleQuery {
   const refresh = queryString(query.refresh);
-  const from = queryString(query.from);
-  const to = queryString(query.to);
+  let from = queryString(query.from);
+  let to = queryString(query.to);
   const programRaw = queryString(query.program);
   const semesterRaw = queryString(query.semester);
   const directionRaw = queryString(query.direction);
 
+  // Older PWA builds / bare /api/schedule hits — fall back to the current week
+  if (!from && !to) {
+    const fallback = defaultScheduleRange();
+    from = fallback.from;
+    to = fallback.to;
+    console.log(
+      `[schedule] missing from/to — defaulting to current week ${from}…${to}`,
+    );
+  }
+
   if (!from || !to) {
-    throw new ScheduleQueryError('Query parameters "from" and "to" are required (YYYY-MM-DD)');
+    throw new ScheduleQueryError(
+      'Query parameters "from" and "to" are required (YYYY-MM-DD)',
+    );
   }
   if (!ISO_DATE_RE.test(from) || !ISO_DATE_RE.test(to)) {
     throw new ScheduleQueryError('Dates must use YYYY-MM-DD format');

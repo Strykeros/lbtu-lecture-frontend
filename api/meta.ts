@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { loadScheduleMetaResponse } from '../../server/handlers/scheduleHandler.js';
+import { loadScheduleMetaResponse } from '../server/handlers/scheduleHandler.js';
 
 export const config = {
   maxDuration: 60,

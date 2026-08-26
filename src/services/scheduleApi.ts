@@ -100,7 +100,7 @@ export async function fetchScheduleMeta(
   signal?: AbortSignal,
   refresh = false,
 ): Promise<ScheduleMetaResponse> {
-  const url = refresh ? '/api/schedule/meta?refresh=1' : '/api/schedule/meta';
+  const url = refresh ? '/api/meta?refresh=1' : '/api/meta';
   const res = await fetch(url, { signal });
   const data = (await res.json()) as ScheduleMetaResponse & { error?: string };
   if (!res.ok) {

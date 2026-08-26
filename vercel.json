@@ -9,11 +9,11 @@
     }
   ],
   "functions": {
-    "api/schedule/index.ts": {
+    "api/schedule.ts": {
       "maxDuration": 60,
       "memory": 1024
     },
-    "api/schedule/meta.ts": {
+    "api/meta.ts": {
       "maxDuration": 60,
       "memory": 1024
     }

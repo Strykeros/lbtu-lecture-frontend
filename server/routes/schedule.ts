@@ -9,6 +9,25 @@ import {
 
 export const scheduleRouter = Router();
 
+scheduleRouter.get('/meta', async (req, res) => {
+  try {
+    const force =
+      req.query.refresh === '1' || req.query.refresh === 'true';
+    const data = await loadScheduleMetaResponse({ force });
+    res.setHeader('Cache-Control', 'public, max-age=120');
+    res.json(data);
+  } catch (err) {
+    console.error(
+      '[schedule] meta failed:',
+      err instanceof Error ? err.message : err,
+    );
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Metadata could not be loaded',
+    });
+  }
+});
+
+// Back-compat alias for older clients
 scheduleRouter.get('/schedule/meta', async (req, res) => {
   try {
     const force =
