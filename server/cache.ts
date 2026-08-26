@@ -1,62 +1,79 @@
 import type { ScheduleResponse } from '../src/types/schedule.js';
-import { CACHE_TTL_MS } from './services/lbtu/constants.js';
-import { getLbtuSchedule } from './services/lbtu/getSchedule.js';
+import {
+  filterEventsByQuery,
+  getLbtuSchedule,
+  getLbtuScheduleMeta,
+  type ScheduleFetchScope,
+  type ScheduleMetaResponse,
+} from './services/lbtu/getSchedule.js';
 
-interface CacheEntry {
-  data: ScheduleResponse;
+interface MetaCacheEntry {
+  data: ScheduleMetaResponse;
   fetchedAt: number;
 }
 
-let cache: CacheEntry | null = null;
-let inflight: Promise<ScheduleResponse> | null = null;
+let metaCache: MetaCacheEntry | null = null;
+let metaInflight: Promise<ScheduleMetaResponse> | null = null;
 
-export async function getCachedSchedule(options?: {
+const META_TTL_MS = 15 * 60 * 1000;
+
+export async function getCachedScheduleMeta(options?: {
   force?: boolean;
-}): Promise<ScheduleResponse> {
+}): Promise<ScheduleMetaResponse> {
   const now = Date.now();
-  const fresh = cache && now - cache.fetchedAt < CACHE_TTL_MS;
-
-  if (!options?.force && fresh && cache) {
-    return cache.data;
+  if (
+    !options?.force &&
+    metaCache &&
+    now - metaCache.fetchedAt < META_TTL_MS
+  ) {
+    return metaCache.data;
   }
 
-  if (inflight) {
+  if (metaInflight) {
     try {
-      return await inflight;
+      return await metaInflight;
     } catch {
-      if (cache) {
-        return { ...cache.data, stale: true };
-      }
-      throw new Error('Schedule could not be loaded');
+      if (metaCache) return metaCache.data;
+      throw new Error('Schedule metadata could not be loaded');
     }
   }
 
-  inflight = (async () => {
+  metaInflight = (async () => {
     try {
-      const data = await getLbtuSchedule();
-      cache = { data, fetchedAt: Date.now() };
+      const data = await getLbtuScheduleMeta({ force: options?.force });
+      metaCache = { data, fetchedAt: Date.now() };
       return data;
-    } catch (err) {
-      if (cache) {
-        return {
-          ...cache.data,
-          stale: true,
-          error:
-            err instanceof Error
-              ? err.message
-              : 'Could not refresh schedule',
-        };
-      }
-      throw err;
     } finally {
-      inflight = null;
+      metaInflight = null;
     }
   })();
 
-  return inflight;
+  return metaInflight;
 }
 
-export function getCacheMeta(): { ageMs: number | null; hasCache: boolean } {
-  if (!cache) return { ageMs: null, hasCache: false };
-  return { ageMs: Date.now() - cache.fetchedAt, hasCache: true };
+export async function getCachedSchedule(
+  scope: ScheduleFetchScope,
+  options?: { force?: boolean },
+): Promise<ScheduleResponse> {
+  return getLbtuSchedule(scope, { force: options?.force });
+}
+
+export function applyScheduleFilters(
+  data: ScheduleResponse,
+  query: {
+    from: string;
+    to: string;
+    program?: string | null;
+    semester?: string | null;
+    direction?: string | null;
+  },
+): ScheduleResponse {
+  const events = filterEventsByQuery(data.events, query);
+  return {
+    ...data,
+    from: query.from,
+    to: query.to,
+    count: events.length,
+    events,
+  };
 }

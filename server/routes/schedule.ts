@@ -1,38 +1,49 @@
 import { Router } from 'express';
-import type { LectureEvent, ProgramCode } from '../../src/types/schedule.js';
-import { getCachedSchedule } from '../cache.js';
+import {
+  ScheduleQueryError,
+  loadScheduleMetaResponse,
+  loadScheduleResponse,
+  parseScheduleQuery,
+  scheduleErrorPayload,
+} from '../handlers/scheduleHandler.js';
 
 export const scheduleRouter = Router();
 
+scheduleRouter.get('/schedule/meta', async (req, res) => {
+  try {
+    const force =
+      req.query.refresh === '1' || req.query.refresh === 'true';
+    const data = await loadScheduleMetaResponse({ force });
+    res.setHeader('Cache-Control', 'public, max-age=120');
+    res.json(data);
+  } catch (err) {
+    console.error(
+      '[schedule] meta failed:',
+      err instanceof Error ? err.message : err,
+    );
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Metadata could not be loaded',
+    });
+  }
+});
+
 scheduleRouter.get('/schedule', async (req, res) => {
   try {
-    const force = req.query.refresh === '1' || req.query.refresh === 'true';
-    const program = typeof req.query.program === 'string' ? req.query.program : null;
-    const semester =
-      typeof req.query.semester === 'string' ? req.query.semester.replace(/\D/g, '') : null;
-
-    const data = await getCachedSchedule({ force });
-
-    let events: LectureEvent[] = data.events;
-    if (program === 'G0108' || program === 'G0405') {
-      events = events.filter((e) => e.programCode === (program as ProgramCode));
-    }
-    if (semester) {
-      events = events.filter((e) => e.semester === semester);
-    }
-
+    const query = parseScheduleQuery(
+      req.query as Record<string, string | string[] | undefined>,
+    );
+    const data = await loadScheduleResponse(query);
     res.setHeader('Cache-Control', 'public, max-age=60');
-    res.json({ ...data, events });
+    res.json(data);
   } catch (err) {
-    res.status(503).json({
-      updatedAt: null,
-      source: 'https://lais.lbtu.lv/luis/lsarG.html',
-      programs: [
-        { code: 'G0108', name: 'Ekonomika Maģistra' },
-        { code: 'G0405', name: 'Lauksaimniecības inženierzinātne Maģistra' },
-      ],
-      events: [],
-      error: err instanceof Error ? err.message : 'Schedule could not be loaded',
-    });
+    if (err instanceof ScheduleQueryError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    console.error(
+      '[schedule] fetch failed:',
+      err instanceof Error ? err.message : err,
+    );
+    res.status(503).json(scheduleErrorPayload(err));
   }
 });

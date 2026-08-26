@@ -60,10 +60,31 @@ export interface LectureEvent {
 export interface ScheduleResponse {
   updatedAt: string;
   source: string;
+  /** Inclusive range echoed from the request when present */
+  from?: string;
+  to?: string;
+  count?: number;
   programs: ProgramInfo[];
   /** All discovered novirzieni across programs/semesters */
   directions: StudyDirection[];
   events: LectureEvent[];
   stale?: boolean;
   error?: string;
+}
+
+export interface ScheduleMetaSemester {
+  semester: string;
+  directions: Array<{ code: string; name: string }>;
+}
+
+export interface ScheduleMetaProgram {
+  code: ProgramCode;
+  name: string;
+  semesters: ScheduleMetaSemester[];
+}
+
+export interface ScheduleMetaResponse {
+  updatedAt: string;
+  source: string;
+  programs: ScheduleMetaProgram[];
 }

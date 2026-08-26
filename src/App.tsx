@@ -12,25 +12,14 @@ import { LectureDetailsSheet } from './components/LectureDetails/LectureDetailsS
 import { useCalendarNavigation } from './hooks/useCalendarNavigation';
 import { useFilters } from './hooks/useFilters';
 import { useSchedule } from './hooks/useSchedule';
+import { useScheduleMeta } from './hooks/useScheduleMeta';
 import { addDaysIso, formatMonthYear, formatUpdatedAt } from './lib/dates';
+import { visibleScheduleRange } from './lib/scheduleRange';
+import type { ScheduleQuery } from './services/scheduleApi';
 import type { LectureEvent, StudyDirection } from './types/schedule';
 import './App.css';
 
-function contentKey(e: LectureEvent): string {
-  return [
-    e.programCode,
-    e.semester,
-    e.courseCode ?? e.courseName,
-    e.date,
-    e.startTime,
-    e.endTime,
-    e.lecturer ?? '',
-    e.locationRaw ?? '',
-  ].join('|');
-}
-
 export default function App() {
-  const { data, status, error, stale, reload } = useSchedule();
   const {
     program,
     setProgram,
@@ -53,22 +42,78 @@ export default function App() {
   } = useCalendarNavigation();
   const [selectedEvent, setSelectedEvent] = useState<LectureEvent | null>(null);
 
+  const {
+    meta,
+    status: metaStatus,
+    error: metaError,
+    reload: reloadMeta,
+  } = useScheduleMeta();
+
+  const range = useMemo(
+    () => visibleScheduleRange(view, selectedDate),
+    [view, selectedDate],
+  );
+
+  const scheduleQuery = useMemo((): ScheduleQuery => {
+    const q: ScheduleQuery = {
+      from: range.from,
+      to: range.to,
+    };
+    if (program !== 'all') q.program = program;
+    if (semester !== 'all') q.semester = semester;
+    if (direction !== 'all') q.direction = direction;
+    return q;
+  }, [range.from, range.to, program, semester, direction]);
+
+  // Stabilize query object identity for the hook dependency when values unchanged
+  const scheduleQueryKey = useMemo(
+    () =>
+      JSON.stringify({
+        from: scheduleQuery.from,
+        to: scheduleQuery.to,
+        program: scheduleQuery.program ?? 'all',
+        semester: scheduleQuery.semester ?? 'all',
+        direction: scheduleQuery.direction ?? 'all',
+      }),
+    [scheduleQuery],
+  );
+
+  const stableQuery = useMemo(
+    () => scheduleQuery,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scheduleQueryKey],
+  );
+
+  const { data, status, error, stale, reload } = useSchedule(stableQuery, {
+    view,
+  });
+
   const availableDirections = useMemo(() => {
-    // Prefer: hide novirzieni until a specific program is selected
-    if (program === 'all') return [] as StudyDirection[];
-    let dirs = (data?.directions ?? []).filter((d) => d.programCode === program);
-    if (semester !== 'all') {
-      dirs = dirs.filter((d) => d.semester === semester);
+    if (program === 'all' || !meta) return [] as StudyDirection[];
+    const prog = meta.programs.find((p) => p.code === program);
+    if (!prog) return [];
+
+    const dirs: StudyDirection[] = [];
+    for (const sem of prog.semesters) {
+      if (semester !== 'all' && sem.semester !== semester) continue;
+      for (const d of sem.directions) {
+        dirs.push({
+          code: d.code,
+          name: d.name,
+          programCode: program,
+          semester: sem.semester,
+          sourceUrl: '',
+        });
+      }
     }
-    // Unique by code for the chip list (same code can appear in multiple semesters)
+
     const map = new Map<string, StudyDirection>();
     for (const d of dirs) {
       if (!map.has(d.code)) map.set(d.code, d);
     }
     return [...map.values()].sort((a, b) => a.code.localeCompare(b.code, 'lv'));
-  }, [data?.directions, program, semester]);
+  }, [meta, program, semester]);
 
-  // Reset direction only when it becomes invalid — never touch calendar date
   useEffect(() => {
     if (direction === 'all') return;
     if (program === 'all' || !availableDirections.some((d) => d.code === direction)) {
@@ -76,37 +121,19 @@ export default function App() {
     }
   }, [availableDirections, direction, program, setDirection]);
 
-  const filteredEvents = useMemo(() => {
-    let events = data?.events ?? [];
-    if (program !== 'all') {
-      events = events.filter((e) => e.programCode === program);
-    }
-    if (semester !== 'all') {
-      events = events.filter((e) => e.semester === semester);
-    }
-    if (direction !== 'all') {
-      // Strict: only this novirziens' schedule page
-      events = events.filter((e) => e.directionCode === direction);
-    } else {
-      // Visi novirzieni: one card per real lecture (dedupe across sources)
-      const map = new Map<string, LectureEvent>();
-      for (const e of events) {
-        const key = contentKey(e);
-        if (!map.has(key)) map.set(key, e);
-      }
-      events = [...map.values()];
-    }
-    return events;
-  }, [data?.events, program, semester, direction]);
-
   const semesterOptions = useMemo(() => {
+    if (!meta) return [] as string[];
     const set = new Set<string>();
-    for (const e of data?.events ?? []) {
-      if (program !== 'all' && e.programCode !== program) continue;
-      set.add(e.semester);
+    for (const prog of meta.programs) {
+      if (program !== 'all' && prog.code !== program) continue;
+      for (const sem of prog.semesters) {
+        set.add(sem.semester);
+      }
     }
     return [...set].sort((a, b) => Number(a) - Number(b));
-  }, [data?.events, program]);
+  }, [meta, program]);
+
+  const events = data?.events ?? [];
 
   const handleProgramChange = (next: typeof program) => {
     setProgram(next);
@@ -115,7 +142,17 @@ export default function App() {
     }
   };
 
-  if (status === 'loading' && !data) {
+  const handleRefresh = () => {
+    reloadMeta(true);
+    reload(true);
+  };
+
+  const bootLoading =
+    (metaStatus === 'loading' && !meta) || (status === 'loading' && !data);
+  const bootError =
+    (metaStatus === 'error' && !meta) || (status === 'error' && !data);
+
+  if (bootLoading) {
     return (
       <div className="app-shell">
         <Header
@@ -123,7 +160,7 @@ export default function App() {
           onViewChange={setView}
           updatedAt={null}
           stale={false}
-          onRefresh={() => reload(true)}
+          onRefresh={handleRefresh}
           theme={theme}
           onThemeChange={setTheme}
         />
@@ -134,7 +171,7 @@ export default function App() {
     );
   }
 
-  if (status === 'error' && !data) {
+  if (bootError) {
     return (
       <div className="app-shell">
         <Header
@@ -142,15 +179,15 @@ export default function App() {
           onViewChange={setView}
           updatedAt={null}
           stale={false}
-          onRefresh={() => reload(true)}
+          onRefresh={handleRefresh}
           theme={theme}
           onThemeChange={setTheme}
         />
         <main className="app-main">
           <div className="state-card state-card--error">
             <p>Grafiku neizdevās ielādēt.</p>
-            <p className="state-card__detail">{error}</p>
-            <button type="button" className="retry-btn" onClick={() => reload(true)}>
+            <p className="state-card__detail">{error ?? metaError}</p>
+            <button type="button" className="retry-btn" onClick={handleRefresh}>
               Mēģināt vēlreiz
             </button>
           </div>
@@ -159,6 +196,9 @@ export default function App() {
     );
   }
 
+  const isRefreshing =
+    status === 'loading' || metaStatus === 'loading';
+
   return (
     <div className="app-shell">
       <Header
@@ -166,7 +206,7 @@ export default function App() {
         onViewChange={setView}
         updatedAt={data?.updatedAt ? formatUpdatedAt(data.updatedAt) : null}
         stale={stale || Boolean(error)}
-        onRefresh={() => reload(true)}
+        onRefresh={handleRefresh}
         theme={theme}
         onThemeChange={setTheme}
       />
@@ -175,7 +215,7 @@ export default function App() {
         {(stale || error) && data && (
           <div className="banner" role="status">
             Neizdevās atjaunināt grafiku. Tiek rādīti pēdējie veiksmīgi ielādētie dati.
-            <button type="button" onClick={() => reload(true)}>
+            <button type="button" onClick={handleRefresh}>
               Mēģināt vēlreiz
             </button>
           </div>
@@ -208,7 +248,7 @@ export default function App() {
               <DayAgenda
                 selectedDate={selectedDate}
                 weekStart={weekStart}
-                events={filteredEvents}
+                events={events}
                 onSelectDate={setSelectedDate}
                 onSelectEvent={setSelectedEvent}
                 showNextUp
@@ -218,14 +258,14 @@ export default function App() {
             <div className="desktop-pane">
               <WeekCalendar
                 weekStart={weekStart}
-                events={filteredEvents}
+                events={events}
                 onSelect={setSelectedEvent}
               />
               <div className="desktop-day">
                 <DayAgenda
                   selectedDate={selectedDate}
                   weekStart={weekStart}
-                  events={filteredEvents}
+                  events={events}
                   onSelectDate={setSelectedDate}
                   onSelectEvent={setSelectedEvent}
                   showNextUp
@@ -241,7 +281,7 @@ export default function App() {
               <DayAgenda
                 selectedDate={selectedDate}
                 weekStart={weekStart}
-                events={filteredEvents}
+                events={events}
                 onSelectDate={setSelectedDate}
                 onSelectEvent={setSelectedEvent}
                 onSwipeDay={(dir) => setSelectedDate(addDaysIso(selectedDate, dir))}
@@ -250,7 +290,7 @@ export default function App() {
             <div className="desktop-only">
               <WeekCalendar
                 weekStart={weekStart}
-                events={filteredEvents}
+                events={events}
                 onSelect={setSelectedEvent}
               />
             </div>
@@ -260,7 +300,7 @@ export default function App() {
         {view === 'agenda' && (
           <AgendaList
             fromDate={selectedDate}
-            events={filteredEvents}
+            events={events}
             onSelect={setSelectedEvent}
           />
         )}
@@ -268,7 +308,7 @@ export default function App() {
         {view === 'month' && (
           <MonthView
             selectedDate={selectedDate}
-            events={filteredEvents}
+            events={events}
             onSelectDate={(date) => {
               setSelectedDate(date);
               setView('today');
@@ -278,6 +318,12 @@ export default function App() {
       </main>
 
       <LectureDetailsSheet event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+
+      {isRefreshing && (
+        <div className="loading-fab" role="status" aria-live="polite" aria-label="Ielādē grafiku">
+          <span className="loading-fab__spinner" aria-hidden />
+        </div>
+      )}
     </div>
   );
 }
