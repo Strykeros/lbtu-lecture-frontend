@@ -48,8 +48,16 @@ export function Header({
               <option value="dark">Tumšs</option>
             </select>
           </label>
-          <button type="button" className="icon-btn" onClick={onRefresh} aria-label="Atjaunināt grafiku">
-            ↻
+          <button
+            type="button"
+            className="refresh-btn"
+            onClick={onRefresh}
+            aria-label="Atjaunināt lekciju sarakstu"
+          >
+            <span className="refresh-btn__icon" aria-hidden>
+              ↻
+            </span>
+            <span className="refresh-btn__label">Atjaunināt lekcijas</span>
           </button>
         </div>
       </div>

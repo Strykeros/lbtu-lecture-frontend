@@ -47,18 +47,40 @@
   font-size: 0.8rem;
 }
 
-.icon-btn {
-  width: 44px;
-  height: 44px;
+.icon-btn,
+.refresh-btn {
+  min-height: 44px;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font-size: 1.2rem;
   cursor: pointer;
 }
 
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  font-size: 1.2rem;
+}
+
+.refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.75rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.refresh-btn__icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
 .icon-btn:focus-visible,
+.refresh-btn:focus-visible,
 .view-tab:focus-visible,
 .theme-select select:focus-visible {
   outline: 2px solid var(--accent);
