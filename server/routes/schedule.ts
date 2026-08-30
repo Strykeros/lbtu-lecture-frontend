@@ -6,6 +6,11 @@ import {
   parseScheduleQuery,
   scheduleErrorPayload,
 } from '../handlers/scheduleHandler.js';
+import {
+  createRequestTiming,
+  metaCacheControl,
+  scheduleCacheControl,
+} from '../lib/timing.js';
 
 export const scheduleRouter = Router();
 
@@ -14,7 +19,7 @@ scheduleRouter.get('/meta', async (req, res) => {
     const force =
       req.query.refresh === '1' || req.query.refresh === 'true';
     const data = await loadScheduleMetaResponse({ force });
-    res.setHeader('Cache-Control', 'public, max-age=120');
+    res.setHeader('Cache-Control', metaCacheControl(force));
     res.json(data);
   } catch (err) {
     console.error(
@@ -27,13 +32,12 @@ scheduleRouter.get('/meta', async (req, res) => {
   }
 });
 
-// Back-compat alias for older clients
 scheduleRouter.get('/schedule/meta', async (req, res) => {
   try {
     const force =
       req.query.refresh === '1' || req.query.refresh === 'true';
     const data = await loadScheduleMetaResponse({ force });
-    res.setHeader('Cache-Control', 'public, max-age=120');
+    res.setHeader('Cache-Control', metaCacheControl(force));
     res.json(data);
   } catch (err) {
     console.error(
@@ -47,12 +51,15 @@ scheduleRouter.get('/schedule/meta', async (req, res) => {
 });
 
 scheduleRouter.get('/schedule', async (req, res) => {
+  const timing = createRequestTiming();
   try {
     const query = parseScheduleQuery(
       req.query as Record<string, string | string[] | undefined>,
     );
-    const data = await loadScheduleResponse(query);
-    res.setHeader('Cache-Control', 'public, max-age=60');
+    const data = await loadScheduleResponse(query, timing);
+    res.setHeader('Cache-Control', scheduleCacheControl(query.force));
+    const serverTiming = timing.header();
+    if (serverTiming) res.setHeader('Server-Timing', serverTiming);
     res.json(data);
   } catch (err) {
     if (err instanceof ScheduleQueryError) {

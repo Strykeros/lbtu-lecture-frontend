@@ -1,5 +1,6 @@
 import type { ProgramCode, ScheduleResponse } from '../../src/types/schedule.js';
 import { applyScheduleFilters, getCachedSchedule, getCachedScheduleMeta } from '../cache.js';
+import type { RequestTiming } from '../lib/timing.js';
 import type { ScheduleMetaResponse } from '../services/lbtu/getSchedule.js';
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -147,11 +148,14 @@ export function parseScheduleQuery(
  */
 export async function loadScheduleResponse(
   query: ParsedScheduleQuery,
+  timing?: RequestTiming,
 ): Promise<ScheduleResponse> {
+  timing?.start('total');
   console.log(
     `[schedule] request start from=${query.from} to=${query.to} program=${query.program ?? 'all'} semester=${query.semester ?? 'all'} direction=${query.direction ?? 'all'} force=${query.force}`,
   );
 
+  timing?.start('source');
   const data = await getCachedSchedule(
     {
       programs: query.program ? [query.program] : undefined,
@@ -160,7 +164,9 @@ export async function loadScheduleResponse(
     },
     { force: query.force },
   );
+  timing?.end('source');
 
+  timing?.start('filter');
   const filtered = applyScheduleFilters(data, {
     from: query.from,
     to: query.to,
@@ -168,7 +174,10 @@ export async function loadScheduleResponse(
     semester: query.semester,
     direction: query.direction,
   });
+  timing?.end('filter');
+  timing?.end('total');
 
+  timing?.log('[schedule]');
   console.log(
     `[schedule] request complete count=${filtered.count ?? filtered.events.length} updatedAt=${filtered.updatedAt}`,
   );

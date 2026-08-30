@@ -5,6 +5,10 @@ import {
   parseScheduleQuery,
   scheduleErrorPayload,
 } from '../server/handlers/scheduleHandler.js';
+import {
+  createRequestTiming,
+  scheduleCacheControl,
+} from '../server/lib/timing.js';
 
 export const config = {
   maxDuration: 60,
@@ -20,12 +24,16 @@ export default async function handler(
     return;
   }
 
+  const timing = createRequestTiming();
+
   try {
     const query = parseScheduleQuery(
       (req.query ?? {}) as Record<string, string | string[] | undefined>,
     );
-    const data = await loadScheduleResponse(query);
-    res.setHeader('Cache-Control', 'public, max-age=60');
+    const data = await loadScheduleResponse(query, timing);
+    res.setHeader('Cache-Control', scheduleCacheControl(query.force));
+    const serverTiming = timing.header();
+    if (serverTiming) res.setHeader('Server-Timing', serverTiming);
     res.status(200).json(data);
   } catch (err) {
     if (err instanceof ScheduleQueryError) {

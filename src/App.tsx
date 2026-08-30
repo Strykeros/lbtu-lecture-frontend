@@ -44,8 +44,7 @@ export default function App() {
 
   const {
     meta,
-    status: metaStatus,
-    error: metaError,
+    refreshing: metaRefreshing,
     reload: reloadMeta,
   } = useScheduleMeta();
 
@@ -84,7 +83,7 @@ export default function App() {
     [scheduleQueryKey],
   );
 
-  const { data, status, error, stale, reload } = useSchedule(stableQuery, {
+  const { data, status, error, stale, refreshing, reload } = useSchedule(stableQuery, {
     view,
   });
 
@@ -147,10 +146,8 @@ export default function App() {
     reload(true);
   };
 
-  const bootLoading =
-    (metaStatus === 'loading' && !meta) || (status === 'loading' && !data);
-  const bootError =
-    (metaStatus === 'error' && !meta) || (status === 'error' && !data);
+  const bootLoading = status === 'loading' && !data;
+  const bootError = status === 'error' && !data;
 
   if (bootLoading) {
     return (
@@ -186,7 +183,7 @@ export default function App() {
         <main className="app-main">
           <div className="state-card state-card--error">
             <p>Grafiku neizdevās ielādēt.</p>
-            <p className="state-card__detail">{error ?? metaError}</p>
+            <p className="state-card__detail">{error}</p>
             <button type="button" className="retry-btn" onClick={handleRefresh}>
               Mēģināt vēlreiz
             </button>
@@ -196,8 +193,7 @@ export default function App() {
     );
   }
 
-  const isRefreshing =
-    status === 'loading' || metaStatus === 'loading';
+  const isRefreshing = refreshing || metaRefreshing;
 
   return (
     <div className="app-shell">

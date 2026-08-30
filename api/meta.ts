@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { loadScheduleMetaResponse } from '../server/handlers/scheduleHandler.js';
+import { metaCacheControl } from '../server/lib/timing.js';
 
 export const config = {
   maxDuration: 60,
@@ -22,7 +23,7 @@ export default async function handler(
       refresh === 'true' ||
       (Array.isArray(refresh) && (refresh[0] === '1' || refresh[0] === 'true'));
     const data = await loadScheduleMetaResponse({ force });
-    res.setHeader('Cache-Control', 'public, max-age=120');
+    res.setHeader('Cache-Control', metaCacheControl(force));
     res.status(200).json(data);
   } catch (err) {
     console.error(

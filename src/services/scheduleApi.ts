@@ -4,6 +4,12 @@ import type {
   ScheduleMetaResponse,
   ScheduleResponse,
 } from '../types/schedule';
+import {
+  readPersistedMeta,
+  readPersistedSchedule,
+  writePersistedMeta,
+  writePersistedSchedule,
+} from '../lib/scheduleClientCache';
 
 export interface ScheduleQuery {
   from: string;
@@ -24,7 +30,7 @@ export function scheduleQueryKey(query: ScheduleQuery): string {
   });
 }
 
-const CLIENT_CACHE_TTL_MS = 10 * 60 * 1000;
+const MEMORY_CACHE_TTL_MS = 10 * 60 * 1000;
 
 interface CacheEntry {
   data: ScheduleResponse;
@@ -43,70 +49,6 @@ function buildScheduleUrl(query: ScheduleQuery): string {
   if (query.direction) params.set('direction', query.direction);
   if (query.refresh) params.set('refresh', '1');
   return `/api/schedule?${params.toString()}`;
-}
-
-export async function fetchSchedule(
-  query: ScheduleQuery,
-  signal?: AbortSignal,
-): Promise<ScheduleResponse> {
-  const key = scheduleQueryKey(query);
-
-  if (query.refresh) {
-    responseCache.delete(key);
-  }
-
-  if (!query.refresh) {
-    const cached = responseCache.get(key);
-    if (cached && Date.now() - cached.fetchedAt < CLIENT_CACHE_TTL_MS) {
-      return cached.data;
-    }
-    // Only dedupe identical in-flight requests that cannot be aborted independently
-    if (!signal) {
-      const pending = inflight.get(key);
-      if (pending) return pending;
-    }
-  }
-
-  const request = (async () => {
-    const res = await fetch(buildScheduleUrl(query), { signal });
-    const data = (await res.json()) as ScheduleResponse & { error?: string };
-    if (!res.ok && (!data.events || data.events.length === 0)) {
-      throw new Error(data.error ?? 'Schedule could not be loaded');
-    }
-    const normalized = normalizeSchedule(data);
-    responseCache.set(key, { data: normalized, fetchedAt: Date.now() });
-    return normalized;
-  })();
-
-  if (!query.refresh && !signal) {
-    inflight.set(key, request);
-  }
-
-  try {
-    return await request;
-  } finally {
-    if (!signal) inflight.delete(key);
-  }
-}
-
-/** Soft prefetch — ignores abort and swallows errors. */
-export function prefetchSchedule(query: ScheduleQuery): void {
-  void fetchSchedule(query).catch(() => {
-    /* ignore prefetch errors */
-  });
-}
-
-export async function fetchScheduleMeta(
-  signal?: AbortSignal,
-  refresh = false,
-): Promise<ScheduleMetaResponse> {
-  const url = refresh ? '/api/meta?refresh=1' : '/api/meta';
-  const res = await fetch(url, { signal });
-  const data = (await res.json()) as ScheduleMetaResponse & { error?: string };
-  if (!res.ok) {
-    throw new Error(data.error ?? 'Schedule metadata could not be loaded');
-  }
-  return data;
 }
 
 function normalizeSchedule(data: ScheduleResponse): ScheduleResponse {
@@ -128,6 +70,92 @@ function normalizeSchedule(data: ScheduleResponse): ScheduleResponse {
       }),
     ),
   };
+}
+
+function cacheSchedule(key: string, data: ScheduleResponse): ScheduleResponse {
+  const normalized = normalizeSchedule(data);
+  responseCache.set(key, { data: normalized, fetchedAt: Date.now() });
+  writePersistedSchedule(key, normalized);
+  return normalized;
+}
+
+/** Instant client-side cache (memory → localStorage). */
+export function getCachedSchedule(query: ScheduleQuery): ScheduleResponse | null {
+  const key = scheduleQueryKey(query);
+  const mem = responseCache.get(key);
+  if (mem && Date.now() - mem.fetchedAt < MEMORY_CACHE_TTL_MS) {
+    return mem.data;
+  }
+  const persisted = readPersistedSchedule(key);
+  if (persisted) {
+    responseCache.set(key, { data: persisted, fetchedAt: Date.now() });
+    return persisted;
+  }
+  return null;
+}
+
+export async function fetchSchedule(
+  query: ScheduleQuery,
+  signal?: AbortSignal,
+): Promise<ScheduleResponse> {
+  const key = scheduleQueryKey(query);
+
+  if (query.refresh) {
+    responseCache.delete(key);
+  } else {
+    const cached = getCachedSchedule(query);
+    if (cached) return cached;
+
+    const pending = inflight.get(key);
+    if (pending) return pending;
+  }
+
+  const request = (async () => {
+    const res = await fetch(buildScheduleUrl(query), { signal });
+    const data = (await res.json()) as ScheduleResponse & { error?: string };
+    if (!res.ok && (!data.events || data.events.length === 0)) {
+      throw new Error(data.error ?? 'Schedule could not be loaded');
+    }
+    return cacheSchedule(key, data);
+  })();
+
+  inflight.set(key, request);
+  try {
+    return await request;
+  } finally {
+    inflight.delete(key);
+  }
+}
+
+/** Soft prefetch — ignores abort and swallows errors. */
+export function prefetchSchedule(query: ScheduleQuery): void {
+  if (getCachedSchedule(query)) return;
+  void fetchSchedule(query).catch(() => {
+    /* ignore prefetch errors */
+  });
+}
+
+export function getCachedMeta(): ScheduleMetaResponse | null {
+  return readPersistedMeta();
+}
+
+export async function fetchScheduleMeta(
+  signal?: AbortSignal,
+  refresh = false,
+): Promise<ScheduleMetaResponse> {
+  if (!refresh) {
+    const cached = getCachedMeta();
+    if (cached) return cached;
+  }
+
+  const url = refresh ? '/api/meta?refresh=1' : '/api/meta';
+  const res = await fetch(url, { signal });
+  const data = (await res.json()) as ScheduleMetaResponse & { error?: string };
+  if (!res.ok) {
+    throw new Error(data.error ?? 'Schedule metadata could not be loaded');
+  }
+  writePersistedMeta(data);
+  return data;
 }
 
 export function clearScheduleClientCache(): void {

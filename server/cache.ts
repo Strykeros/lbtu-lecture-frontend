@@ -15,7 +15,7 @@ interface MetaCacheEntry {
 let metaCache: MetaCacheEntry | null = null;
 let metaInflight: Promise<ScheduleMetaResponse> | null = null;
 
-const META_TTL_MS = 15 * 60 * 1000;
+const META_TTL_MS = 60 * 60 * 1000; // 1 hour — matches index/direction discovery cache
 
 export async function getCachedScheduleMeta(options?: {
   force?: boolean;

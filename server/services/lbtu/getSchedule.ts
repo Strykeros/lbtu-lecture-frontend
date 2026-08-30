@@ -5,10 +5,11 @@ import type {
   ScheduleResponse,
   StudyDirection,
 } from '../../../src/types/schedule.js';
-import { CACHE_TTL_MS, LBTU_INDEX_URL, TARGET_PROGRAMS } from './constants.js';
+import { CACHE_TTL_MS, INDEX_CACHE_TTL_MS, LBTU_FETCH_CONCURRENCY, LBTU_INDEX_URL, TARGET_PROGRAMS } from './constants.js';
 import { deduplicateEvents } from './deduplicate.js';
 import { fetchLbtu } from './fetch.js';
 import { lectureContentKey } from './normalize.js';
+import { mapPool } from './concurrency.js';
 import {
   parseIndex,
   type DiscoveredSemesterLink,
@@ -63,10 +64,23 @@ interface IndexEntry {
 const indexCache: { current: IndexEntry | null } = { current: null };
 const directionMetaCache = new Map<string, DirectionMetaEntry>();
 const eventsCache = new Map<string, EventsEntry>();
+const scopeResultCache = new Map<string, { data: ScheduleResponse; fetchedAt: number }>();
 const inflight = new Map<string, Promise<unknown>>();
 
 function isFresh(fetchedAt: number): boolean {
   return Date.now() - fetchedAt < CACHE_TTL_MS;
+}
+
+function isIndexFresh(fetchedAt: number): boolean {
+  return Date.now() - fetchedAt < INDEX_CACHE_TTL_MS;
+}
+
+function scopeCacheKey(
+  programs: ProgramCode[],
+  semester: string | null,
+  direction: string | null,
+): string {
+  return `${programs.join('+')}:${semester ?? 'all'}:${direction ?? 'all'}`;
 }
 
 async function withInflight<T>(key: string, run: () => Promise<T>): Promise<T> {
@@ -80,11 +94,11 @@ async function withInflight<T>(key: string, run: () => Promise<T>): Promise<T> {
 }
 
 export async function getIndexLinks(force = false): Promise<DiscoveredSemesterLink[]> {
-  if (!force && indexCache.current && isFresh(indexCache.current.fetchedAt)) {
+  if (!force && indexCache.current && isIndexFresh(indexCache.current.fetchedAt)) {
     return indexCache.current.links;
   }
   return withInflight('index', async () => {
-    if (!force && indexCache.current && isFresh(indexCache.current.fetchedAt)) {
+    if (!force && indexCache.current && isIndexFresh(indexCache.current.fetchedAt)) {
       return indexCache.current.links;
     }
     console.log('[schedule] fetching LBTU index');
@@ -210,109 +224,140 @@ export async function getLbtuSchedule(
   const programs = resolvePrograms(scope);
   const semesterFilter = scope.semester?.replace(/\D/g, '') || null;
   const directionFilter = normalizeDirectionFilter(scope.direction);
+  const cacheKey = scopeCacheKey(programs, semesterFilter, directionFilter);
 
-  const links = (await getIndexLinks(force)).filter((link) => {
-    if (!programs.includes(link.programCode)) return false;
-    if (semesterFilter && link.semester !== semesterFilter) return false;
-    return true;
-  });
-
-  if (links.length === 0) {
-    throw new Error('No schedule links found for the selected program/semester');
-  }
-
-  const allDirections: StudyDirection[] = [];
-  const allEvents: LectureEvent[] = [];
-  const errors: string[] = [];
-
-  for (const link of links) {
-    try {
-      const directions = await getDirectionsForLink(link, force);
-      allDirections.push(...directions);
-
-      if (directions.length === 0) {
-        if (directionFilter) {
-          // Semester has no novirzieni — skip when a specific direction was requested
-          continue;
-        }
-        const events = await getEventsForSource(link, null, force);
-        allEvents.push(...events);
-        continue;
-      }
-
-      const wanted = directionFilter
-        ? directions.filter((d) => d.code === directionFilter)
-        : directions;
-
-      if (directionFilter && wanted.length === 0) {
-        errors.push(
-          `${link.programCode} ${link.semester}-sem: novirziens "${directionFilter}" nav atrasts`,
-        );
-        continue;
-      }
-
-      const results = await Promise.all(
-        wanted.map(async (dir) => {
-          try {
-            const events = await getEventsForSource(link, dir, force);
-            return { events, error: null as string | null };
-          } catch (err) {
-            return {
-              events: [] as LectureEvent[],
-              error: err instanceof Error ? err.message : String(err),
-            };
-          }
-        }),
-      );
-
-      for (const result of results) {
-        allEvents.push(...result.events);
-        if (result.error) {
-          errors.push(`${link.programCode} ${link.semester}-sem: ${result.error}`);
-        }
-      }
-    } catch (err) {
-      errors.push(
-        `${link.programCode} ${link.semester}-sem: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+  if (!force) {
+    const cached = scopeResultCache.get(cacheKey);
+    if (cached && isFresh(cached.fetchedAt)) {
+      console.log(`[schedule] scope cache hit ${cacheKey}`);
+      return cached.data;
     }
   }
 
-  const events = deduplicateEvents(allEvents);
+  return withInflight(`scope:${cacheKey}:${force}`, async () => {
+    if (!force) {
+      const again = scopeResultCache.get(cacheKey);
+      if (again && isFresh(again.fetchedAt)) {
+        return again.data;
+      }
+    }
 
-  if (events.length === 0 && errors.length > 0 && allDirections.length === 0) {
-    throw new Error(`Failed to fetch schedules: ${errors.join('; ')}`);
-  }
+    const links = (await getIndexLinks(force)).filter((link) => {
+      if (!programs.includes(link.programCode)) return false;
+      if (semesterFilter && link.semester !== semesterFilter) return false;
+      return true;
+    });
 
-  const uniqueDirections = dedupeDirections(allDirections);
-  const programInfos: ProgramInfo[] = programs.map((code) => ({
-    code,
-    name: TARGET_PROGRAMS[code].name,
-    subprograms: uniqueDirections
-      .filter((d) => d.programCode === code)
-      .map((d) => ({
-        code: d.code,
-        name: d.name,
-        programCode: d.programCode,
-      })),
-  }));
+    if (links.length === 0) {
+      throw new Error('No schedule links found for the selected program/semester');
+    }
 
-  console.log(
-    `[schedule] parsed ${events.length} events for scope programs=${programs.join(',')} semester=${semesterFilter ?? 'all'} direction=${directionFilter ?? 'all'}`,
-  );
+    const linkResults = await mapPool(links, LBTU_FETCH_CONCURRENCY, async (link) => {
+      const allDirections: StudyDirection[] = [];
+      const allEvents: LectureEvent[] = [];
+      const errors: string[] = [];
 
-  return {
-    updatedAt: formatRigaIso(new Date()),
-    source: LBTU_INDEX_URL,
-    programs: programInfos,
-    directions: uniqueDirections,
-    events,
-    ...(errors.length > 0
-      ? { error: `Daļēji neizdevās ielādēt: ${errors.join('; ')}` }
-      : {}),
-  };
+      try {
+        const directions = await getDirectionsForLink(link, force);
+        allDirections.push(...directions);
+
+        if (directions.length === 0) {
+          if (directionFilter) {
+            return { allDirections, allEvents, errors };
+          }
+          const events = await getEventsForSource(link, null, force);
+          allEvents.push(...events);
+          return { allDirections, allEvents, errors };
+        }
+
+        const wanted = directionFilter
+          ? directions.filter((d) => d.code === directionFilter)
+          : directions;
+
+        if (directionFilter && wanted.length === 0) {
+          errors.push(
+            `${link.programCode} ${link.semester}-sem: novirziens "${directionFilter}" nav atrasts`,
+          );
+          return { allDirections, allEvents, errors };
+        }
+
+        const results = await Promise.all(
+          wanted.map(async (dir) => {
+            try {
+              const events = await getEventsForSource(link, dir, force);
+              return { events, error: null as string | null };
+            } catch (err) {
+              return {
+                events: [] as LectureEvent[],
+                error: err instanceof Error ? err.message : String(err),
+              };
+            }
+          }),
+        );
+
+        for (const result of results) {
+          allEvents.push(...result.events);
+          if (result.error) {
+            errors.push(`${link.programCode} ${link.semester}-sem: ${result.error}`);
+          }
+        }
+      } catch (err) {
+        errors.push(
+          `${link.programCode} ${link.semester}-sem: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+
+      return { allDirections, allEvents, errors };
+    });
+
+    const allDirections: StudyDirection[] = [];
+    const allEvents: LectureEvent[] = [];
+    const errors: string[] = [];
+    for (const result of linkResults) {
+      allDirections.push(...result.allDirections);
+      allEvents.push(...result.allEvents);
+      errors.push(...result.errors);
+    }
+
+    const events = deduplicateEvents(allEvents);
+
+    if (events.length === 0 && errors.length > 0 && allDirections.length === 0) {
+      throw new Error(`Failed to fetch schedules: ${errors.join('; ')}`);
+    }
+
+    const uniqueDirections = dedupeDirections(allDirections);
+    const programInfos: ProgramInfo[] = programs.map((code) => ({
+      code,
+      name: TARGET_PROGRAMS[code].name,
+      subprograms: uniqueDirections
+        .filter((d) => d.programCode === code)
+        .map((d) => ({
+          code: d.code,
+          name: d.name,
+          programCode: d.programCode,
+        })),
+    }));
+
+    console.log(
+      `[schedule] parsed ${events.length} events for scope programs=${programs.join(',')} semester=${semesterFilter ?? 'all'} direction=${directionFilter ?? 'all'}`,
+    );
+
+    const response: ScheduleResponse = {
+      updatedAt: formatRigaIso(new Date()),
+      source: LBTU_INDEX_URL,
+      programs: programInfos,
+      directions: uniqueDirections,
+      events,
+      ...(errors.length > 0
+        ? { error: `Daļēji neizdevās ielādēt: ${errors.join('; ')}` }
+        : {}),
+    };
+
+    scopeResultCache.set(cacheKey, { data: response, fetchedAt: Date.now() });
+    return response;
+  });
 }
 
 /** Lightweight filter metadata — does not parse lecture grids. */
@@ -331,10 +376,14 @@ export async function getLbtuScheduleMeta(
     });
   }
 
-  for (const link of links) {
+  const rows = await mapPool(links, LBTU_FETCH_CONCURRENCY, async (link) => {
+    const directions = await getDirectionsForLink(link, force);
+    return { link, directions };
+  });
+
+  for (const { link, directions } of rows) {
     const prog = byProgram.get(link.programCode);
     if (!prog) continue;
-    const directions = await getDirectionsForLink(link, force);
     prog.semesters.push({
       semester: link.semester,
       directions: directions.map((d) => ({ code: d.code, name: d.name })),
@@ -461,5 +510,6 @@ export function clearScheduleCaches(): void {
   indexCache.current = null;
   directionMetaCache.clear();
   eventsCache.clear();
+  scopeResultCache.clear();
   inflight.clear();
 }

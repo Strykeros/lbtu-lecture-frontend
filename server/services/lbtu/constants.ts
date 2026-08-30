@@ -27,7 +27,12 @@ export const USER_AGENT =
   'LBTU-Lecture-Calendar/1.0 (+educational timetable viewer; contact: local-app)';
 
 export const FETCH_TIMEOUT_MS = 20_000;
+/** Parsed schedule pages / scope assemblies */
 export const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+/** LBTU index link discovery — changes rarely */
+export const INDEX_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+/** Max parallel LBTU HTTP requests per scrape */
+export const LBTU_FETCH_CONCURRENCY = 4;
 
 export const WEEKDAY_NAMES_LV = [
   'Pirmdiena',

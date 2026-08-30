@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchSchedule,
+  getCachedSchedule,
   prefetchSchedule,
+  scheduleQueryKey,
   type ScheduleQuery,
 } from '../services/scheduleApi';
 import type { ScheduleResponse } from '../types/schedule';
@@ -13,6 +15,7 @@ type Status = 'idle' | 'loading' | 'ready' | 'error';
 interface UseScheduleResult {
   data: ScheduleResponse | null;
   status: Status;
+  refreshing: boolean;
   error: string | null;
   stale: boolean;
   reload: (force?: boolean) => void;
@@ -33,10 +36,16 @@ export function useSchedule(
   query: ScheduleQuery | null,
   options?: { view?: CalendarView },
 ): UseScheduleResult {
-  const [data, setData] = useState<ScheduleResponse | null>(null);
-  const [status, setStatus] = useState<Status>('loading');
+  const queryKey = query ? scheduleQueryKey(query) : null;
+  const [data, setData] = useState<ScheduleResponse | null>(() =>
+    query ? getCachedSchedule(query) : null,
+  );
+  const [status, setStatus] = useState<Status>(() =>
+    query && getCachedSchedule(query) ? 'ready' : 'loading',
+  );
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const dataRef = useRef<ScheduleResponse | null>(null);
+  const dataRef = useRef<ScheduleResponse | null>(data);
   const requestIdRef = useRef(0);
   const view = options?.view;
 
@@ -45,12 +54,21 @@ export function useSchedule(
   }, [data]);
 
   useEffect(() => {
-    if (!query) return;
+    if (!query || !queryKey) return;
 
     const controller = new AbortController();
     const requestId = ++requestIdRef.current;
+    const cached = getCachedSchedule(query);
 
-    setStatus('loading');
+    if (cached) {
+      setData(cached);
+      setStatus('ready');
+      setRefreshing(true);
+    } else if (!dataRef.current) {
+      setStatus('loading');
+    } else {
+      setRefreshing(true);
+    }
     setError(null);
 
     void (async () => {
@@ -59,6 +77,7 @@ export function useSchedule(
         if (requestId !== requestIdRef.current) return;
         setData(next);
         setStatus('ready');
+        setRefreshing(false);
         if (next.stale) {
           setError(next.error ?? 'Neizdevās atjaunināt grafiku.');
         }
@@ -69,6 +88,7 @@ export function useSchedule(
         if (controller.signal.aborted) return;
         if (requestId !== requestIdRef.current) return;
         if (err instanceof DOMException && err.name === 'AbortError') return;
+        setRefreshing(false);
 
         if (dataRef.current) {
           setError(
@@ -87,7 +107,7 @@ export function useSchedule(
     return () => {
       controller.abort();
     };
-  }, [query, view]);
+  }, [query, queryKey, view]);
 
   const reload = useCallback(
     (force = true) => {
@@ -95,7 +115,8 @@ export function useSchedule(
       const controller = new AbortController();
       const requestId = ++requestIdRef.current;
       setError(null);
-      setStatus('loading');
+      setRefreshing(true);
+      if (!dataRef.current) setStatus('loading');
 
       void (async () => {
         try {
@@ -106,12 +127,14 @@ export function useSchedule(
           if (requestId !== requestIdRef.current) return;
           setData(next);
           setStatus('ready');
+          setRefreshing(false);
           if (next.stale) {
             setError(next.error ?? 'Neizdevās atjaunināt grafiku.');
           }
         } catch (err) {
           if (requestId !== requestIdRef.current) return;
           if (err instanceof DOMException && err.name === 'AbortError') return;
+          setRefreshing(false);
           if (dataRef.current) {
             setError(
               err instanceof Error
@@ -136,6 +159,7 @@ export function useSchedule(
   return {
     data,
     status,
+    refreshing,
     error,
     stale: Boolean(data?.stale),
     reload,
