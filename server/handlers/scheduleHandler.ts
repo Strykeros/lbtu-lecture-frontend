@@ -1,7 +1,15 @@
 import type { ProgramCode, ScheduleResponse } from '../../src/types/schedule.js';
-import { applyScheduleFilters, getCachedSchedule, getCachedScheduleMeta } from '../cache.js';
+import {
+  applyScheduleFilters,
+  getCachedSchedule,
+  getCachedScheduleMeta,
+  getCachedScheduleOptions,
+} from '../cache.js';
 import type { RequestTiming } from '../lib/timing.js';
-import type { ScheduleMetaResponse } from '../services/lbtu/getSchedule.js';
+import type {
+  ScheduleMetaResponse,
+  ScheduleOptionsResponse,
+} from '../services/lbtu/getSchedule.js';
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_SCHEDULE_RANGE_DAYS = 60;
@@ -194,6 +202,17 @@ export async function loadScheduleMetaResponse(options?: {
     `[schedule] meta request complete programs=${meta.programs.length}`,
   );
   return meta;
+}
+
+export async function loadScheduleOptionsResponse(options?: {
+  force?: boolean;
+}): Promise<ScheduleOptionsResponse> {
+  console.log('[schedule] options request start');
+  const data = await getCachedScheduleOptions(options);
+  console.log(
+    `[schedule] options request complete programs=${data.programs.length}`,
+  );
+  return data;
 }
 
 export function scheduleErrorPayload(err: unknown): ScheduleResponse {

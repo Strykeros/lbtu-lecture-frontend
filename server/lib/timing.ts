@@ -48,3 +48,10 @@ export function metaCacheControl(forceRefresh: boolean): string {
   }
   return 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
 }
+
+export function optionsCacheControl(forceRefresh: boolean): string {
+  if (forceRefresh) {
+    return 'no-cache, no-store, must-revalidate';
+  }
+  return 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
+}

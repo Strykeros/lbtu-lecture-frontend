@@ -1,9 +1,11 @@
-import type { ScheduleMetaResponse, ScheduleResponse } from '../types/schedule';
+import type { ScheduleMetaResponse, ScheduleOptionsResponse, ScheduleResponse } from '../types/schedule';
 
 const SCHEDULE_PREFIX = 'lbtu-schedule-v2:';
 const META_KEY = 'lbtu-meta-v2';
+const OPTIONS_KEY = 'lbtu-options-v2';
 const SCHEDULE_TTL_MS = 15 * 60 * 1000;
 const META_TTL_MS = 60 * 60 * 1000;
+const OPTIONS_TTL_MS = 60 * 60 * 1000;
 
 interface Stored<T> {
   fetchedAt: number;
@@ -48,4 +50,12 @@ export function readPersistedMeta(): ScheduleMetaResponse | null {
 
 export function writePersistedMeta(data: ScheduleMetaResponse): void {
   writeStored(META_KEY, data);
+}
+
+export function readPersistedOptions(): ScheduleOptionsResponse | null {
+  return readStored<ScheduleOptionsResponse>(OPTIONS_KEY, OPTIONS_TTL_MS);
+}
+
+export function writePersistedOptions(data: ScheduleOptionsResponse): void {
+  writeStored(OPTIONS_KEY, data);
 }

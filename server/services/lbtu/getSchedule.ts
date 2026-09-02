@@ -46,6 +46,18 @@ export interface ScheduleMetaResponse {
   programs: ScheduleMetaProgram[];
 }
 
+export interface ScheduleOptionsProgram {
+  code: ProgramCode;
+  name: string;
+  semesters: string[];
+}
+
+export interface ScheduleOptionsResponse {
+  updatedAt: string;
+  source: string;
+  programs: ScheduleOptionsProgram[];
+}
+
 interface DirectionMetaEntry {
   directions: StudyDirection[];
   fetchedAt: number;
@@ -226,6 +238,10 @@ export async function getLbtuSchedule(
   const directionFilter = normalizeDirectionFilter(scope.direction);
   const cacheKey = scopeCacheKey(programs, semesterFilter, directionFilter);
 
+  if (force) {
+    invalidateScopeCache(scope);
+  }
+
   if (!force) {
     const cached = scopeResultCache.get(cacheKey);
     if (cached && isFresh(cached.fetchedAt)) {
@@ -242,7 +258,7 @@ export async function getLbtuSchedule(
       }
     }
 
-    const links = (await getIndexLinks(force)).filter((link) => {
+    const links = (await getIndexLinks(false)).filter((link) => {
       if (!programs.includes(link.programCode)) return false;
       if (semesterFilter && link.semester !== semesterFilter) return false;
       return true;
@@ -358,6 +374,62 @@ export async function getLbtuSchedule(
     scopeResultCache.set(cacheKey, { data: response, fetchedAt: Date.now() });
     return response;
   });
+}
+
+/** Index-only programme/semester list — no semester page fetches, no events. */
+export async function getLbtuScheduleOptions(
+  options?: { force?: boolean },
+): Promise<ScheduleOptionsResponse> {
+  const force = Boolean(options?.force);
+  const links = await getIndexLinks(force);
+  const semestersByProgram = new Map<ProgramCode, Set<string>>();
+
+  for (const code of ['G0108', 'G0405'] as const) {
+    semestersByProgram.set(code, new Set());
+  }
+
+  for (const link of links) {
+    semestersByProgram.get(link.programCode)?.add(link.semester);
+  }
+
+  return {
+    updatedAt: formatRigaIso(new Date()),
+    source: LBTU_INDEX_URL,
+    programs: (['G0108', 'G0405'] as const).map((code) => ({
+      code,
+      name: TARGET_PROGRAMS[code].name,
+      semesters: [...(semestersByProgram.get(code) ?? [])].sort(
+        (a, b) => Number(a) - Number(b),
+      ),
+    })),
+  };
+}
+
+/**
+ * Drop cached scrape results for one programme/semester/direction scope.
+ * Used by manual refresh so unrelated programmes stay cached.
+ */
+export function invalidateScopeCache(scope: ScheduleFetchScope): void {
+  const programs = resolvePrograms(scope);
+  const semesterFilter = scope.semester?.replace(/\D/g, '') || null;
+  const directionFilter = normalizeDirectionFilter(scope.direction);
+  const cacheKey = scopeCacheKey(programs, semesterFilter, directionFilter);
+  scopeResultCache.delete(cacheKey);
+
+  for (const program of programs) {
+    if (!semesterFilter) continue;
+    directionMetaCache.delete(dirMetaKey(program, semesterFilter));
+
+    if (directionFilter) {
+      eventsCache.delete(eventsKey(program, semesterFilter, directionFilter));
+    } else {
+      for (const key of [...eventsCache.keys()]) {
+        if (key.startsWith(`events:${program}:${semesterFilter}:`)) {
+          eventsCache.delete(key);
+        }
+      }
+    }
+  }
 }
 
 /** Lightweight filter metadata — does not parse lecture grids. */

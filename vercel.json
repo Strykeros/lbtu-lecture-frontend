@@ -16,6 +16,10 @@
     "api/meta.ts": {
       "maxDuration": 60,
       "memory": 1024
+    },
+    "api/schedule/options.ts": {
+      "maxDuration": 30,
+      "memory": 512
     }
   }
 }

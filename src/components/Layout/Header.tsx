@@ -7,9 +7,11 @@ interface Props {
   onViewChange: (view: CalendarView) => void;
   updatedAt: string | null;
   stale: boolean;
-  onRefresh: () => void;
+  onRefresh?: () => void;
   theme: ThemePreference;
   onThemeChange: (theme: ThemePreference) => void;
+  showViews?: boolean;
+  showRefresh?: boolean;
 }
 
 const VIEWS: { id: CalendarView; label: string }[] = [
@@ -27,6 +29,8 @@ export function Header({
   onRefresh,
   theme,
   onThemeChange,
+  showViews = true,
+  showRefresh = true,
 }: Props) {
   return (
     <header className="app-header">
@@ -48,33 +52,37 @@ export function Header({
               <option value="dark">Tumšs</option>
             </select>
           </label>
-          <button
-            type="button"
-            className="refresh-btn"
-            onClick={onRefresh}
-            aria-label="Atjaunināt lekciju sarakstu"
-          >
-            <span className="refresh-btn__icon" aria-hidden>
-              ↻
-            </span>
-            <span className="refresh-btn__label">Atjaunināt lekcijas</span>
-          </button>
+          {showRefresh && onRefresh && (
+            <button
+              type="button"
+              className="refresh-btn"
+              onClick={onRefresh}
+              aria-label="Atjaunināt lekciju sarakstu"
+            >
+              <span className="refresh-btn__icon" aria-hidden>
+                ↻
+              </span>
+              <span className="refresh-btn__label">Atjaunināt lekcijas</span>
+            </button>
+          )}
         </div>
       </div>
 
-      <nav className="view-tabs" aria-label="Skati">
-        {VIEWS.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            className={view === v.id ? 'view-tab is-active' : 'view-tab'}
-            onClick={() => onViewChange(v.id)}
-            aria-current={view === v.id ? 'page' : undefined}
-          >
-            {v.label}
-          </button>
-        ))}
-      </nav>
+      {showViews && (
+        <nav className="view-tabs" aria-label="Skati">
+          {VIEWS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              className={view === v.id ? 'view-tab is-active' : 'view-tab'}
+              onClick={() => onViewChange(v.id)}
+              aria-current={view === v.id ? 'page' : undefined}
+            >
+              {v.label}
+            </button>
+          ))}
+        </nav>
+      )}
 
       {updatedAt && (
         <p className={`updated-line ${stale ? 'is-stale' : ''}`}>

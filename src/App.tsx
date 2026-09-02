@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActiveSelectionBar } from './components/Setup/ActiveSelectionBar';
+import { ProgramSetup } from './components/Setup/ProgramSetup';
 import { Header } from './components/Layout/Header';
 import { NavControls } from './components/Layout/NavControls';
-import { ProgramFilter } from './components/Filters/ProgramFilter';
-import { SemesterFilter } from './components/Filters/SemesterFilter';
 import { DirectionFilter } from './components/Filters/DirectionFilter';
 import { DayAgenda } from './components/Calendar/DayAgenda';
 import { WeekCalendar } from './components/Calendar/WeekCalendar';
@@ -12,24 +12,16 @@ import { LectureDetailsSheet } from './components/LectureDetails/LectureDetailsS
 import { useCalendarNavigation } from './hooks/useCalendarNavigation';
 import { useFilters } from './hooks/useFilters';
 import { useSchedule } from './hooks/useSchedule';
-import { useScheduleMeta } from './hooks/useScheduleMeta';
+import { useScheduleOptions } from './hooks/useScheduleOptions';
+import { useStudySelection } from './hooks/useStudySelection';
 import { addDaysIso, formatMonthYear, formatUpdatedAt } from './lib/dates';
 import { visibleScheduleRange } from './lib/scheduleRange';
-import type { ScheduleQuery } from './services/scheduleApi';
+import { fetchSchedule, type ScheduleQuery } from './services/scheduleApi';
 import type { LectureEvent, StudyDirection } from './types/schedule';
 import './App.css';
 
 export default function App() {
-  const {
-    program,
-    setProgram,
-    semester,
-    setSemester,
-    direction,
-    setDirection,
-    theme,
-    setTheme,
-  } = useFilters();
+  const { direction, setDirection, theme, setTheme } = useFilters();
   const {
     selectedDate,
     setSelectedDate,
@@ -43,37 +35,52 @@ export default function App() {
   const [selectedEvent, setSelectedEvent] = useState<LectureEvent | null>(null);
 
   const {
-    meta,
-    refreshing: metaRefreshing,
-    reload: reloadMeta,
-  } = useScheduleMeta();
+    options,
+    status: optionsStatus,
+    error: optionsError,
+    reload: reloadOptions,
+  } = useScheduleOptions();
+
+  const {
+    showSetup,
+    activeSelection,
+    draftProgram,
+    draftSemester,
+    semesterOptions,
+    rememberChoice,
+    setRememberChoice,
+    setDraftProgram,
+    setDraftSemester,
+    confirmLoading,
+    confirmError,
+    programError,
+    semesterError,
+    openSetup,
+    confirmSelection,
+    commitSelection,
+    failConfirm,
+    startConfirm,
+  } = useStudySelection({ options });
 
   const range = useMemo(
     () => visibleScheduleRange(view, selectedDate),
     [view, selectedDate],
   );
 
-  const scheduleQuery = useMemo((): ScheduleQuery => {
+  const scheduleQuery = useMemo((): ScheduleQuery | null => {
+    if (!activeSelection || showSetup) return null;
     const q: ScheduleQuery = {
       from: range.from,
       to: range.to,
+      program: activeSelection.program,
+      semester: activeSelection.semester,
     };
-    if (program !== 'all') q.program = program;
-    if (semester !== 'all') q.semester = semester;
     if (direction !== 'all') q.direction = direction;
     return q;
-  }, [range.from, range.to, program, semester, direction]);
+  }, [activeSelection, showSetup, range.from, range.to, direction]);
 
-  // Stabilize query object identity for the hook dependency when values unchanged
   const scheduleQueryKey = useMemo(
-    () =>
-      JSON.stringify({
-        from: scheduleQuery.from,
-        to: scheduleQuery.to,
-        program: scheduleQuery.program ?? 'all',
-        semester: scheduleQuery.semester ?? 'all',
-        direction: scheduleQuery.direction ?? 'all',
-      }),
+    () => (scheduleQuery ? JSON.stringify(scheduleQuery) : null),
     [scheduleQuery],
   );
 
@@ -83,68 +90,150 @@ export default function App() {
     [scheduleQueryKey],
   );
 
-  const { data, status, error, stale, refreshing, reload } = useSchedule(stableQuery, {
-    view,
-  });
+  const scheduleEnabled = Boolean(activeSelection && !showSetup);
+
+  const { data, status, error, stale, refreshing, reload } = useSchedule(
+    stableQuery,
+    { view, enabled: scheduleEnabled },
+  );
 
   const availableDirections = useMemo(() => {
-    if (program === 'all' || !meta) return [] as StudyDirection[];
-    const prog = meta.programs.find((p) => p.code === program);
-    if (!prog) return [];
-
-    const dirs: StudyDirection[] = [];
-    for (const sem of prog.semesters) {
-      if (semester !== 'all' && sem.semester !== semester) continue;
-      for (const d of sem.directions) {
-        dirs.push({
-          code: d.code,
-          name: d.name,
-          programCode: program,
-          semester: sem.semester,
-          sourceUrl: '',
-        });
-      }
-    }
-
-    const map = new Map<string, StudyDirection>();
-    for (const d of dirs) {
-      if (!map.has(d.code)) map.set(d.code, d);
-    }
-    return [...map.values()].sort((a, b) => a.code.localeCompare(b.code, 'lv'));
-  }, [meta, program, semester]);
+    if (!data?.directions || !activeSelection) return [] as StudyDirection[];
+    return data.directions
+      .filter(
+        (d) =>
+          d.programCode === activeSelection.program &&
+          d.semester === activeSelection.semester,
+      )
+      .sort((a, b) => a.code.localeCompare(b.code, 'lv'));
+  }, [data?.directions, activeSelection]);
 
   useEffect(() => {
     if (direction === 'all') return;
-    if (program === 'all' || !availableDirections.some((d) => d.code === direction)) {
+    if (!availableDirections.some((d) => d.code === direction)) {
       setDirection('all');
     }
-  }, [availableDirections, direction, program, setDirection]);
+  }, [availableDirections, direction, setDirection]);
 
-  const semesterOptions = useMemo(() => {
-    if (!meta) return [] as string[];
-    const set = new Set<string>();
-    for (const prog of meta.programs) {
-      if (program !== 'all' && prog.code !== program) continue;
-      for (const sem of prog.semesters) {
-        set.add(sem.semester);
-      }
-    }
-    return [...set].sort((a, b) => Number(a) - Number(b));
-  }, [meta, program]);
+  const activeProgramName = useMemo(() => {
+    if (!activeSelection || !options) return undefined;
+    return options.programs.find((p) => p.code === activeSelection.program)?.name;
+  }, [activeSelection, options]);
 
   const events = data?.events ?? [];
 
-  const handleProgramChange = (next: typeof program) => {
-    setProgram(next);
-    if (next === 'all') {
-      setDirection('all');
-    }
-  };
+  const handleConfirmSetup = useCallback(async () => {
+    const selection = confirmSelection();
+    if (!selection) return;
 
-  const handleRefresh = () => {
-    reloadMeta(true);
+    startConfirm();
+    const initialRange = visibleScheduleRange('today', selectedDate);
+    const query: ScheduleQuery = {
+      from: initialRange.from,
+      to: initialRange.to,
+      program: selection.program,
+      semester: selection.semester,
+    };
+
+    try {
+      await fetchSchedule(query);
+      setDirection('all');
+      commitSelection(selection);
+    } catch (err) {
+      failConfirm(
+        err instanceof Error ? err.message : 'Grafiku neizdevās ielādēt.',
+      );
+    }
+  }, [
+    commitSelection,
+    confirmSelection,
+    failConfirm,
+    selectedDate,
+    setDirection,
+    startConfirm,
+  ]);
+
+  const handleChangeSelectionConfirm = useCallback(async () => {
+    const selection = confirmSelection();
+    if (!selection) return;
+
+    const programChanged =
+      activeSelection?.program !== selection.program ||
+      activeSelection?.semester !== selection.semester;
+
+    startConfirm();
+    const initialRange = visibleScheduleRange(view, selectedDate);
+    const query: ScheduleQuery = {
+      from: initialRange.from,
+      to: initialRange.to,
+      program: selection.program,
+      semester: selection.semester,
+    };
+
+    try {
+      await fetchSchedule(query);
+      if (programChanged) {
+        setDirection('all');
+      }
+      commitSelection(selection);
+    } catch (err) {
+      failConfirm(
+        err instanceof Error ? err.message : 'Grafiku neizdevās ielādēt.',
+      );
+    }
+  }, [
+    activeSelection,
+    commitSelection,
+    confirmSelection,
+    failConfirm,
+    selectedDate,
+    setDirection,
+    startConfirm,
+    view,
+  ]);
+
+  const handleRefresh = useCallback(() => {
     reload(true);
-  };
+  }, [reload]);
+
+  if (showSetup) {
+    return (
+      <div className="app-shell">
+        <Header
+          view={view}
+          onViewChange={setView}
+          updatedAt={null}
+          stale={false}
+          theme={theme}
+          onThemeChange={setTheme}
+          showViews={false}
+          showRefresh={false}
+        />
+        <main className="app-main">
+          <ProgramSetup
+            options={options}
+            optionsLoading={optionsStatus === 'loading'}
+            optionsError={optionsError}
+            onRetryOptions={() => reloadOptions(true)}
+            draftProgram={draftProgram}
+            draftSemester={draftSemester}
+            semesterOptions={semesterOptions}
+            onProgramChange={setDraftProgram}
+            onSemesterChange={setDraftSemester}
+            rememberChoice={rememberChoice}
+            onRememberChange={setRememberChoice}
+            onConfirm={
+              activeSelection ? handleChangeSelectionConfirm : handleConfirmSetup
+            }
+            confirmLoading={confirmLoading}
+            confirmError={confirmError}
+            programError={programError}
+            semesterError={semesterError}
+          />
+        </main>
+      </div>
+    );
+  }
 
   const bootLoading = status === 'loading' && !data;
   const bootError = status === 'error' && !data;
@@ -182,18 +271,19 @@ export default function App() {
         />
         <main className="app-main">
           <div className="state-card state-card--error">
-            <p>Grafiku neizdevās ielādēt.</p>
+            <p>Neizdevās ielādēt lekcijas.</p>
             <p className="state-card__detail">{error}</p>
             <button type="button" className="retry-btn" onClick={handleRefresh}>
               Mēģināt vēlreiz
+            </button>
+            <button type="button" className="retry-btn retry-btn--ghost" onClick={openSetup}>
+              Mainīt izvēli
             </button>
           </div>
         </main>
       </div>
     );
   }
-
-  const isRefreshing = refreshing || metaRefreshing;
 
   return (
     <div className="app-shell">
@@ -210,26 +300,31 @@ export default function App() {
       <main className="app-main">
         {(stale || error) && data && (
           <div className="banner" role="status">
-            Neizdevās atjaunināt grafiku. Tiek rādīti pēdējie veiksmīgi ielādētie dati.
+            Neizdevās atjaunot grafiku. Tiek rādīti pēdējie veiksmīgi ielādētie dati.
             <button type="button" onClick={handleRefresh}>
               Mēģināt vēlreiz
             </button>
           </div>
         )}
 
-        <div className="filters-block">
-          <ProgramFilter program={program} onChange={handleProgramChange} />
-          <SemesterFilter
-            value={semester}
-            options={semesterOptions}
-            onChange={setSemester}
+        {activeSelection && (
+          <ActiveSelectionBar
+            program={activeSelection.program}
+            programName={activeProgramName}
+            semester={activeSelection.semester}
+            onChangeSelection={openSetup}
           />
-          <DirectionFilter
-            value={direction}
-            options={availableDirections}
-            onChange={setDirection}
-          />
-        </div>
+        )}
+
+        {availableDirections.length > 0 && (
+          <div className="filters-block">
+            <DirectionFilter
+              value={direction}
+              options={availableDirections}
+              onChange={setDirection}
+            />
+          </div>
+        )}
 
         <NavControls
           onPrev={goPrev}
@@ -315,7 +410,7 @@ export default function App() {
 
       <LectureDetailsSheet event={selectedEvent} onClose={() => setSelectedEvent(null)} />
 
-      {isRefreshing && (
+      {refreshing && (
         <div className="loading-fab" role="status" aria-live="polite">
           <span className="loading-fab__spinner" aria-hidden />
           <span className="loading-fab__text">Atjaunina lekciju sarakstu…</span>

@@ -57,6 +57,13 @@
   cursor: pointer;
 }
 
+.retry-btn--ghost {
+  margin-left: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
 .banner {
   display: flex;
   flex-wrap: wrap;

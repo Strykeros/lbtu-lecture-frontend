@@ -2,12 +2,15 @@ import type {
   LectureEvent,
   ProgramInfo,
   ScheduleMetaResponse,
+  ScheduleOptionsResponse,
   ScheduleResponse,
 } from '../types/schedule';
 import {
   readPersistedMeta,
+  readPersistedOptions,
   readPersistedSchedule,
   writePersistedMeta,
+  writePersistedOptions,
   writePersistedSchedule,
 } from '../lib/scheduleClientCache';
 
@@ -137,6 +140,31 @@ export function prefetchSchedule(query: ScheduleQuery): void {
 
 export function getCachedMeta(): ScheduleMetaResponse | null {
   return readPersistedMeta();
+}
+
+export function getCachedOptions(): ScheduleOptionsResponse | null {
+  return readPersistedOptions();
+}
+
+export async function fetchScheduleOptions(
+  signal?: AbortSignal,
+  refresh = false,
+): Promise<ScheduleOptionsResponse> {
+  if (!refresh) {
+    const cached = getCachedOptions();
+    if (cached) return cached;
+  }
+
+  const url = refresh
+    ? '/api/schedule/options?refresh=1'
+    : '/api/schedule/options';
+  const res = await fetch(url, { signal });
+  const data = (await res.json()) as ScheduleOptionsResponse & { error?: string };
+  if (!res.ok) {
+    throw new Error(data.error ?? 'Studiju programmas neizdevās ielādēt');
+  }
+  writePersistedOptions(data);
+  return data;
 }
 
 export async function fetchScheduleMeta(

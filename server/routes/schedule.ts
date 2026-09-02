@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   ScheduleQueryError,
   loadScheduleMetaResponse,
+  loadScheduleOptionsResponse,
   loadScheduleResponse,
   parseScheduleQuery,
   scheduleErrorPayload,
@@ -9,6 +10,7 @@ import {
 import {
   createRequestTiming,
   metaCacheControl,
+  optionsCacheControl,
   scheduleCacheControl,
 } from '../lib/timing.js';
 
@@ -46,6 +48,24 @@ scheduleRouter.get('/schedule/meta', async (req, res) => {
     );
     res.status(500).json({
       error: err instanceof Error ? err.message : 'Metadata could not be loaded',
+    });
+  }
+});
+
+scheduleRouter.get('/schedule/options', async (req, res) => {
+  try {
+    const force =
+      req.query.refresh === '1' || req.query.refresh === 'true';
+    const data = await loadScheduleOptionsResponse({ force });
+    res.setHeader('Cache-Control', optionsCacheControl(force));
+    res.json(data);
+  } catch (err) {
+    console.error(
+      '[schedule] options failed:',
+      err instanceof Error ? err.message : err,
+    );
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Options could not be loaded',
     });
   }
 });

@@ -1,9 +1,9 @@
-import type { ProgramFilter as ProgramFilterValue } from '../../hooks/useFilters';
+import type { ProgramCode } from '../../types/schedule';
 import './Filters.css';
 
 interface Props {
-  program: ProgramFilterValue;
-  onChange: (value: ProgramFilterValue) => void;
+  program: 'all' | ProgramCode;
+  onChange: (value: 'all' | ProgramCode) => void;
 }
 
 export function ProgramFilter({ program, onChange }: Props) {

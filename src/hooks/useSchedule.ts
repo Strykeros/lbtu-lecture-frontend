@@ -34,15 +34,17 @@ function prefetchAdjacentWeeks(query: ScheduleQuery): void {
 
 export function useSchedule(
   query: ScheduleQuery | null,
-  options?: { view?: CalendarView },
+  options?: { view?: CalendarView; enabled?: boolean },
 ): UseScheduleResult {
+  const enabled = options?.enabled ?? Boolean(query);
   const queryKey = query ? scheduleQueryKey(query) : null;
   const [data, setData] = useState<ScheduleResponse | null>(() =>
-    query ? getCachedSchedule(query) : null,
+    enabled && query ? getCachedSchedule(query) : null,
   );
-  const [status, setStatus] = useState<Status>(() =>
-    query && getCachedSchedule(query) ? 'ready' : 'loading',
-  );
+  const [status, setStatus] = useState<Status>(() => {
+    if (!enabled || !query) return 'idle';
+    return getCachedSchedule(query) ? 'ready' : 'loading';
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dataRef = useRef<ScheduleResponse | null>(data);
@@ -54,7 +56,9 @@ export function useSchedule(
   }, [data]);
 
   useEffect(() => {
-    if (!query || !queryKey) return;
+    if (!enabled || !query || !queryKey) {
+      return;
+    }
 
     const controller = new AbortController();
     const requestId = ++requestIdRef.current;
@@ -107,11 +111,11 @@ export function useSchedule(
     return () => {
       controller.abort();
     };
-  }, [query, queryKey, view]);
+  }, [query, queryKey, view, enabled]);
 
   const reload = useCallback(
     (force = true) => {
-      if (!query) return;
+      if (!enabled || !query) return;
       const controller = new AbortController();
       const requestId = ++requestIdRef.current;
       setError(null);
@@ -153,7 +157,7 @@ export function useSchedule(
         }
       })();
     },
-    [query],
+    [query, enabled],
   );
 
   return {

@@ -88,3 +88,16 @@ export interface ScheduleMetaResponse {
   source: string;
   programs: ScheduleMetaProgram[];
 }
+
+/** Lightweight programme/semester list for the initial setup screen — no events. */
+export interface ScheduleOptionsProgram {
+  code: ProgramCode;
+  name: string;
+  semesters: string[];
+}
+
+export interface ScheduleOptionsResponse {
+  updatedAt: string;
+  source: string;
+  programs: ScheduleOptionsProgram[];
+}
