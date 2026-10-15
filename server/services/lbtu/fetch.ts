@@ -49,8 +49,30 @@ export async function fetchLbtu(url: string): Promise<string> {
     if (err instanceof Error && err.name === 'AbortError') {
       throw new LbtuFetchError(`Timeout fetching ${parsed.pathname}`);
     }
+    const cause = err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined;
+    const causeDetails =
+      cause && typeof cause === 'object'
+        ? (() => {
+            const c = cause as {
+              code?: string;
+              syscall?: string;
+              hostname?: string;
+              message?: string;
+            };
+            const parts = [
+              c.code ? `code=${c.code}` : null,
+              c.syscall ? `syscall=${c.syscall}` : null,
+              c.hostname ? `host=${c.hostname}` : null,
+            ].filter(Boolean);
+            if (parts.length > 0) return ` (${parts.join(', ')})`;
+            if (c.message) return ` (${c.message})`;
+            return '';
+          })()
+        : '';
     throw new LbtuFetchError(
-      `Network error fetching ${parsed.pathname}: ${err instanceof Error ? err.message : String(err)}`,
+      `Network error fetching ${parsed.pathname}: ${
+        err instanceof Error ? err.message : String(err)
+      }${causeDetails}`,
     );
   } finally {
     clearTimeout(timer);
