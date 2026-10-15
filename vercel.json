@@ -11,15 +11,18 @@
   "functions": {
     "api/schedule.ts": {
       "maxDuration": 60,
-      "memory": 1024
+      "memory": 1024,
+      "regions": ["fra1"]
     },
     "api/meta.ts": {
       "maxDuration": 60,
-      "memory": 1024
+      "memory": 1024,
+      "regions": ["fra1"]
     },
     "api/schedule/options.ts": {
       "maxDuration": 30,
-      "memory": 512
+      "memory": 512,
+      "regions": ["fra1"]
     }
   }
 }
